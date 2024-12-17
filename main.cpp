@@ -2,8 +2,6 @@
 #include <iostream>
 int main() {
     std::cout << "Hello, world!" << std::endl;
-    printff();
-    // test git
-    // test git
+    c11_example();
     return 0;
 }
