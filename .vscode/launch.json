@@ -4,7 +4,7 @@
             "name": "(gdb) 启动",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}\\main.exe",
+            "program": "${workspaceFolder}\\bin\\app_debug.exe",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${fileDirname}",
@@ -12,6 +12,7 @@
             "externalConsole": false,
             "MIMode": "gdb",
             "miDebuggerPath": "D:\\APP\\mingw64\\bin\\gdb.exe",
+            "preLaunchTask": "debug",
             "setupCommands": [
                 {
                     "description": "为 gdb 启用整齐打印",
@@ -24,7 +25,7 @@
                     "ignoreFailures": true
                 }
             ]
-        }
+        },
     ],
     "version": "2.0.0"
 }
