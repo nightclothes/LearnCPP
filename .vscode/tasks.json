@@ -24,6 +24,30 @@
             },
             "detail": "调试任务"
         },
+        {
+            "type": "cppbuild",
+            "label": "release",
+            "command": "D:\\APP\\mingw64\\bin\\g++.exe",
+            "args": [
+                "-fdiagnostics-color=always",
+                "-O2",
+                "${workspaceFolder}\\source\\*.cpp",
+                "${workspaceFolder}\\source\\*.hpp",
+                "-o",
+                "${workspaceFolder}\\bin\\app_release.exe"
+            ],
+            "options": {
+                "cwd": "${fileDirname}"
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "detail": "发布任务"
+        },
     ],
     "version": "2.0.0"
 }
