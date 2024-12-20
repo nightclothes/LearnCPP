@@ -56,6 +56,9 @@
         "iomanip": "cpp",
         "semaphore": "cpp",
         "sstream": "cpp",
-        "stop_token": "cpp"
+        "stop_token": "cpp",
+        "cstdarg": "cpp",
+        "condition_variable": "cpp",
+        "mutex": "cpp"
     }
 }
