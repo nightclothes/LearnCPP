@@ -6,10 +6,16 @@
 #include <assert.h>
 #include <thread>
 #include <atomic>
-template<typename... Args>
-void print(Args... args) {
-    (std::cout << ... << args) << std::endl;
+
+template<typename T>
+T sum(T a) {
+    return a;
 }
+template<typename T, typename... Args>
+T sum(T first, Args... args) {
+    return first + sum(args...);
+}
+
 void c11_example() {
     
     
@@ -51,6 +57,6 @@ void c11_example() {
     std::cout << ai << std::endl;
 
     // 变长参数模版
-    print(1, 2, 3, 4, "Hello, world!");
+    std::cout << "Sum: " << sum(1, 2, 3, 4, 5) << std::endl;
 
 }
