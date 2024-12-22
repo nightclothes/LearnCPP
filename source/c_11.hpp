@@ -6,28 +6,53 @@
 #include <assert.h>
 #include <thread>
 #include <atomic>
-template<typename... Args>
-void print(Args... args) {
-    (std::cout << ... << args) << std::endl;
+#include <thread>
+#include <windows.h>
+#include <mutex>
+
+template <typename T>
+T sum(T a)
+{
+    return a;
 }
-void c11_example() {
-    
-    
+template <typename T, typename... Args>
+T sum(T first, Args... args)
+{
+    return first + sum(args...);
+}
+
+std::mutex mtx;
+void task()
+{
+    int cur_processor_num = GetCurrentProcessorNumber();
+    mtx.lock();
+    std::cout << "Thread "
+              << std::this_thread::get_id()
+              << " runs on processor "
+              << cur_processor_num << std::endl;
+    mtx.unlock();
+}
+
+void c11_example()
+{
+
     std::cout << "c11 feature" << std::endl;
-    
+
     // 类型推导
-    auto x = 5; // int
-    auto y = 3.14; // double
+    auto x = 5;       // int
+    auto y = 3.14;    // double
     auto z = "Hello"; // const char[]
 
     // range-based for loop
     std::vector<int> v = {1, 2, 3, 4, 5};
-    for (int i : v) {
+    for (int i : v)
+    {
         std::cout << i << ' ';
     }
 
     // lambda expression
-    auto lambda = [](int x) { return x * x; };
+    auto lambda = [](int x)
+    { return x * x; };
     int yy = lambda(5); // y = 25
 
     // 智能指针
@@ -35,7 +60,7 @@ void c11_example() {
     std::shared_ptr<int> sp(new int(20));
 
     // nullptr
-    int* p = nullptr;
+    int *p = nullptr;
 
     // 静态断言
     static_assert(sizeof(int) == 4, "int is not 4 bytes");
@@ -51,7 +76,15 @@ void c11_example() {
     std::cout << ai << std::endl;
 
     // 变长参数模版
-    print(1, 2, 3, 4, "Hello, world!");
+    std::cout << "Sum: " << sum(1, 2, 3, 4, 5) << std::endl;
+
+    // 多线程
+    std::thread t1(task);
+    std::thread t2(task);
+    std::thread t3(task);
+    t1.join();
+    t2.join();
+    t3.join();
 
     // 结构化绑定
     struct Point {
