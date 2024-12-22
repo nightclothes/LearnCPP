@@ -9,6 +9,8 @@
                 "-g",
                 "${workspaceFolder}\\source\\*.cpp",
                 "${workspaceFolder}\\source\\*.hpp",
+                "-I",
+                "${workspaceFolder}\\external",
                 "-o",
                 "${workspaceFolder}\\bin\\app_debug.exe"
             ],
@@ -33,6 +35,8 @@
                 "-O2",
                 "${workspaceFolder}\\source\\*.cpp",
                 "${workspaceFolder}\\source\\*.hpp",
+                "-I",
+                "${workspaceFolder}\\external",
                 "-o",
                 "${workspaceFolder}\\bin\\app_release.exe"
             ],

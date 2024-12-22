@@ -59,6 +59,15 @@
         "stop_token": "cpp",
         "cstdarg": "cpp",
         "condition_variable": "cpp",
-        "mutex": "cpp"
+        "mutex": "cpp",
+        "bitset": "cpp",
+        "codecvt": "cpp",
+        "complex": "cpp",
+        "cstring": "cpp",
+        "map": "cpp",
+        "expected": "cpp",
+        "source_location": "cpp",
+        "fstream": "cpp",
+        "version": "cpp"
     }
 }
