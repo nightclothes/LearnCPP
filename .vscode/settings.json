@@ -69,6 +69,8 @@
         "source_location": "cpp",
         "fstream": "cpp",
         "version": "cpp",
-        "test_imgui": "cpp"
+        "test_imgui": "cpp",
+        "*.rh": "cpp",
+        "cinttypes": "cpp"
     }
 }

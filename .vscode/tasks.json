@@ -7,12 +7,15 @@
             "args": [
                 "-fdiagnostics-color=always",
                 "-g",
-                "${workspaceFolder}\\source\\*.cpp",
-                "${workspaceFolder}\\source\\*.hpp",
                 "-I",
                 "${workspaceFolder}\\external",
+                "-I",
+                "${workspaceFolder}\\source",
                 "-o",
-                "${workspaceFolder}\\bin\\app_debug.exe"
+                "${workspaceFolder}\\bin\\app_release.exe",
+
+                "${workspaceFolder}\\external\\imgui\\*.cpp",
+                "${workspaceFolder}\\source\\*.cpp",
             ],
             "options": {
                 "cwd": "${fileDirname}"
@@ -33,12 +36,15 @@
             "args": [
                 "-fdiagnostics-color=always",
                 "-O2",
-                "${workspaceFolder}\\source\\*.cpp",
-                "${workspaceFolder}\\source\\*.hpp",
                 "-I",
                 "${workspaceFolder}\\external",
+                "-I",
+                "${workspaceFolder}\\source",
                 "-o",
-                "${workspaceFolder}\\bin\\app_release.exe"
+                "${workspaceFolder}\\bin\\app_release.exe",
+
+                "${workspaceFolder}\\external\\imgui\\*.cpp",
+                "${workspaceFolder}\\source\\*.cpp",
             ],
             "options": {
                 "cwd": "${fileDirname}"
