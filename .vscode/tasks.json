@@ -12,10 +12,15 @@
                 "-I",
                 "${workspaceFolder}\\source",
                 "-o",
-                "${workspaceFolder}\\bin\\app_release.exe",
+                "${workspaceFolder}\\bin\\app_debug.exe",
 
                 "${workspaceFolder}\\external\\imgui\\*.cpp",
                 "${workspaceFolder}\\source\\*.cpp",
+
+                "-ld3d11",
+                "-ld3dcompiler",
+                "-lDwmapi",
+                "-lgdi32",
             ],
             "options": {
                 "cwd": "${fileDirname}"
@@ -45,6 +50,11 @@
 
                 "${workspaceFolder}\\external\\imgui\\*.cpp",
                 "${workspaceFolder}\\source\\*.cpp",
+
+                "-ld3d11",
+                "-ld3dcompiler",
+                "-lDwmapi",
+                "-lgdi32",
             ],
             "options": {
                 "cwd": "${fileDirname}"
