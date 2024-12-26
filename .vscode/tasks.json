@@ -7,20 +7,27 @@
             "args": [
                 "-fdiagnostics-color=always",
                 "-g",
+
                 "-I",
                 "${workspaceFolder}\\external",
                 "-I",
                 "${workspaceFolder}\\source",
-                "-o",
-                "${workspaceFolder}\\bin\\app_debug.exe",
 
                 "${workspaceFolder}\\external\\imgui\\*.cpp",
                 "${workspaceFolder}\\source\\*.cpp",
 
-                "-ld3d11",
-                "-ld3dcompiler",
-                "-lDwmapi",
-                "-lgdi32",
+                "-l",
+                "d3d11",
+                "-l",
+                "d3dcompiler",
+                "-l",
+                "Dwmapi",
+                "-l",
+                "gdi32",
+
+                "-o",
+                "${workspaceFolder}\\bin\\app_debug.exe",
+
             ],
             "options": {
                 "cwd": "${fileDirname}"
@@ -41,20 +48,26 @@
             "args": [
                 "-fdiagnostics-color=always",
                 "-O2",
+
                 "-I",
                 "${workspaceFolder}\\external",
                 "-I",
                 "${workspaceFolder}\\source",
-                "-o",
-                "${workspaceFolder}\\bin\\app_release.exe",
 
                 "${workspaceFolder}\\external\\imgui\\*.cpp",
                 "${workspaceFolder}\\source\\*.cpp",
 
-                "-ld3d11",
-                "-ld3dcompiler",
-                "-lDwmapi",
-                "-lgdi32",
+                "-l",
+                "d3d11",
+                "-l",
+                "d3dcompiler",
+                "-l",
+                "Dwmapi",
+                "-l",
+                "gdi32",
+                
+                "-o",
+                "${workspaceFolder}\\bin\\app_release.exe",
             ],
             "options": {
                 "cwd": "${fileDirname}"
