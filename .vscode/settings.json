@@ -72,5 +72,9 @@
         "test_imgui": "cpp",
         "*.rh": "cpp",
         "cinttypes": "cpp"
-    }
+    },
+    "marscode.codeCompletionPro": {
+        "enableCodeCompletionPro": true
+    },
+    "marscode.enableInlineCommand": true
 }
