@@ -23,11 +23,17 @@
 #include "system_monitor.hpp"
 
 // Data
+// Direct3D 11 设备指针，用于创建和管理Direct3D资源
 static ID3D11Device*            g_pd3dDevice = nullptr;
+// Direct3D 11 设备上下文指针，用于执行渲染命令
 static ID3D11DeviceContext*     g_pd3dDeviceContext = nullptr;
+// DXGI 交换链指针，用于管理前后缓冲区的交换
 static IDXGISwapChain*          g_pSwapChain = nullptr;
+// 标识交换链是否被遮挡，用于处理窗口最小化等情况
 static bool                     g_SwapChainOccluded = false;
+// 窗口调整后的宽度和高度，用于处理窗口大小变化
 static UINT                     g_ResizeWidth = 0, g_ResizeHeight = 0;
+// 主渲染目标视图指针，用于指定渲染目标
 static ID3D11RenderTargetView*  g_mainRenderTargetView = nullptr;
 
 // Forward declarations of helper functions
@@ -725,7 +731,7 @@ int imgui_example()
     //ImGui_ImplWin32_EnableDpiAwareness();
     WNDCLASSEXW wc = { sizeof(wc), CS_CLASSDC, WndProc, 0L, 0L, GetModuleHandle(nullptr), nullptr, nullptr, nullptr, nullptr, L"ImGui Example", nullptr };
     ::RegisterClassExW(&wc);
-    HWND hwnd = ::CreateWindowW(wc.lpszClassName, L"Dear ImGui DirectX11 Example", WS_OVERLAPPEDWINDOW, 100, 100, 1280, 800, nullptr, nullptr, wc.hInstance, nullptr);
+    HWND hwnd = ::CreateWindowW(wc.lpszClassName, L"Dear ImGui DirectX11 Example", WS_OVERLAPPEDWINDOW, 100, 100, 1000, 1000, nullptr, nullptr, wc.hInstance, nullptr);
 
     // Initialize Direct3D
     if (!CreateDeviceD3D(hwnd))
@@ -861,6 +867,13 @@ int imgui_example()
         g_pd3dDeviceContext->ClearRenderTargetView(g_mainRenderTargetView, clear_color_with_alpha);
         ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
 
+        // Update and Render additional Platform Windows
+        if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
+        {
+            ImGui::UpdatePlatformWindows();
+            ImGui::RenderPlatformWindowsDefault();
+        }
+
         // Present
         HRESULT hr = g_pSwapChain->Present(1, 0);   // Present with vsync
         //HRESULT hr = g_pSwapChain->Present(0, 0); // Present without vsync
@@ -880,10 +893,10 @@ int imgui_example()
 }
 
 // Helper functions
-
+// 创建 Direct3D 设备并初始化交换链
 bool CreateDeviceD3D(HWND hWnd)
 {
-    // Setup swap chain
+    // 设置交换链描述
     DXGI_SWAP_CHAIN_DESC sd;
     ZeroMemory(&sd, sizeof(sd));
     sd.BufferCount = 2;
@@ -905,7 +918,7 @@ bool CreateDeviceD3D(HWND hWnd)
     D3D_FEATURE_LEVEL featureLevel;
     const D3D_FEATURE_LEVEL featureLevelArray[2] = { D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_10_0, };
     HRESULT res = D3D11CreateDeviceAndSwapChain(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, createDeviceFlags, featureLevelArray, 2, D3D11_SDK_VERSION, &sd, &g_pSwapChain, &g_pd3dDevice, &featureLevel, &g_pd3dDeviceContext);
-    if (res == DXGI_ERROR_UNSUPPORTED) // Try high-performance WARP software driver if hardware is not available.
+    if (res == DXGI_ERROR_UNSUPPORTED) // 如果硬件不可用，尝试高性能的 WARP 软件驱动
         res = D3D11CreateDeviceAndSwapChain(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, createDeviceFlags, featureLevelArray, 2, D3D11_SDK_VERSION, &sd, &g_pSwapChain, &g_pd3dDevice, &featureLevel, &g_pd3dDeviceContext);
     if (res != S_OK)
         return false;
@@ -914,6 +927,7 @@ bool CreateDeviceD3D(HWND hWnd)
     return true;
 }
 
+// 清理 Direct3D 设备及其相关资源
 void CleanupDeviceD3D()
 {
     CleanupRenderTarget();
@@ -922,6 +936,7 @@ void CleanupDeviceD3D()
     if (g_pd3dDevice) { g_pd3dDevice->Release(); g_pd3dDevice = nullptr; }
 }
 
+// 创建渲染目标视图
 void CreateRenderTarget()
 {
     ID3D11Texture2D* pBackBuffer;
@@ -930,10 +945,15 @@ void CreateRenderTarget()
     pBackBuffer->Release();
 }
 
+// 清理渲染目标资源，释放g_mainRenderTargetView并置空
 void CleanupRenderTarget()
 {
     if (g_mainRenderTargetView) { g_mainRenderTargetView->Release(); g_mainRenderTargetView = nullptr; }
 }
+
+#ifndef WM_DPICHANGED
+#define WM_DPICHANGED 0x02E0 // From Windows SDK 8.1+ headers
+#endif
 
 // Forward declare message handler from imgui_impl_win32.cpp
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -943,27 +963,45 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg
 // - When io.WantCaptureMouse is true, do not dispatch mouse input data to your main application, or clear/overwrite your copy of the mouse data.
 // - When io.WantCaptureKeyboard is true, do not dispatch keyboard input data to your main application, or clear/overwrite your copy of the keyboard data.
 // Generally you may always pass all inputs to dear imgui, and hide them from your application based on those two flags.
+// 窗口消息处理函数，处理窗口的各种消息
 LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
+    // 使用ImGui处理窗口消息，如果ImGui处理了消息则返回true
     if (ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
         return true;
 
+    // 根据消息类型进行处理
     switch (msg)
     {
     case WM_SIZE:
+        // 如果窗口被最小化，则返回0
         if (wParam == SIZE_MINIMIZED)
             return 0;
+        // 获取窗口的新宽度和高度，并存储在全局变量中
         g_ResizeWidth = (UINT)LOWORD(lParam); // Queue resize
         g_ResizeHeight = (UINT)HIWORD(lParam);
         return 0;
     case WM_SYSCOMMAND:
+        // 禁用ALT键触发的应用程序菜单
         if ((wParam & 0xfff0) == SC_KEYMENU) // Disable ALT application menu
             return 0;
         break;
     case WM_DESTROY:
+        // 窗口销毁时发送退出消息
         ::PostQuitMessage(0);
         return 0;
+    case WM_DPICHANGED:
+        // 如果启用了DPI缩放，则调整窗口大小以适应新的DPI
+        if (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_DpiEnableScaleViewports)
+        {
+            //const int dpi = HIWORD(wParam);
+            //printf("WM_DPICHANGED to %d (%.0f%%)\n", dpi, (float)dpi / 96.0f * 100.0f);
+            const RECT* suggested_rect = (RECT*)lParam;
+            ::SetWindowPos(hWnd, nullptr, suggested_rect->left, suggested_rect->top, suggested_rect->right - suggested_rect->left, suggested_rect->bottom - suggested_rect->top, SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+        break;
     }
+    // 默认处理其他消息
     return ::DefWindowProcW(hWnd, msg, wParam, lParam);
 }
 
