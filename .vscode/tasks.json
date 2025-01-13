@@ -24,6 +24,12 @@
                 "Dwmapi",
                 "-l",
                 "gdi32",
+                "-l",
+                "pdh",
+                "-l",
+                "psapi",
+                "-l", "iphlpapi", 
+                "-l", "wininet", 
 
                 "-o",
                 "${workspaceFolder}\\bin\\app_debug.exe",
@@ -65,7 +71,13 @@
                 "Dwmapi",
                 "-l",
                 "gdi32",
-                
+                "-l",
+                "pdh",
+                "-l",
+                "psapi",
+                "-l", "iphlpapi", 
+                "-l", "wininet", 
+
                 "-o",
                 "${workspaceFolder}\\bin\\app_release.exe",
             ],

@@ -6,11 +6,21 @@
 // - Documentation        https://dearimgui.com/docs (same as your local docs/ folder).
 // - Introduction, links and more at the top of imgui.cpp
 
+#define _USE_MATH_DEFINES
+#include <math.h>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_win32.h"
 #include "imgui/imgui_impl_dx11.h"
 #include <d3d11.h>
 #include <tchar.h>
+#include <vector>
+#include <string>
+#include "system_monitor.hpp"
 
 // Data
 static ID3D11Device*            g_pd3dDevice = nullptr;
@@ -26,6 +36,687 @@ void CleanupDeviceD3D();
 void CreateRenderTarget();
 void CleanupRenderTarget();
 LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
+// 在文件开头添加枚举类型
+enum class MenuPage {
+    Dashboard,
+    DataVisualization,
+    SystemMonitor,
+    Settings
+};
+
+// 添加全局变量
+static MenuPage current_page = MenuPage::Dashboard;
+static std::vector<float> cpu_history(100, 0.0f);
+static std::vector<float> memory_history(100, 0.0f);
+static std::vector<float> network_history(100, 0.0f);
+
+// 在文件开头添加新的全局变量
+static const ImVec4 THEME_COLOR_MAIN = ImVec4(0.28f, 0.56f, 1.00f, 1.00f);
+static const ImVec4 THEME_COLOR_DARK = ImVec4(0.13f, 0.14f, 0.17f, 1.00f);
+static const ImVec4 THEME_COLOR_LIGHT = ImVec4(0.20f, 0.22f, 0.27f, 1.00f);
+static const ImVec4 THEME_COLOR_ACCENT = ImVec4(0.28f, 0.56f, 1.00f, 0.50f);
+
+// 在文件开头添加
+static const char* const MENU_ICONS[] = { "📊", "📈", "🔍", "⚙" };
+static const char* const MENU_ITEMS[] = { "仪表盘", "数据可视化", "系统监控", "设置" };
+
+// 添加全局变量
+static SystemMonitor g_SystemMonitor;
+static SystemMonitor::SystemInfo g_SystemInfo;
+static std::vector<SystemMonitor::ProcessInfo> g_ProcessList;
+static std::chrono::steady_clock::time_point g_LastUpdateTime;
+
+// 在文件开头添加
+struct ScrollingBuffer {
+    static const int MaxSize = 100;
+    float Values[MaxSize];
+    int Offset;
+    
+    ScrollingBuffer() {
+        Offset = 0;
+        memset(Values, 0, sizeof(Values));
+    }
+
+    void AddValue(float value) {
+        Values[Offset] = value;
+        Offset = (Offset + 1) % MaxSize;
+    }
+
+    void Draw(const char* label, float scale_min, float scale_max) {
+        ImGui::PlotLines(label, 
+            [](void* data, int idx) {
+                ScrollingBuffer* self = (ScrollingBuffer*)data;
+                int pos = (self->Offset + idx) % MaxSize;
+                return self->Values[pos];
+            },
+            this, MaxSize, 0, nullptr, scale_min, scale_max, ImVec2(-1, 150));
+    }
+};
+
+// 在文件开头添加
+struct PerformanceData {
+    ScrollingBuffer cpuHistory;
+    ScrollingBuffer memHistory;
+    std::vector<float> diskReadSpeeds;
+    std::vector<float> diskWriteSpeeds;
+    std::chrono::steady_clock::time_point lastUpdate;
+    
+    void Update(const SystemMonitor::SystemInfo& info) {
+        auto now = std::chrono::steady_clock::now();
+        if (std::chrono::duration_cast<std::chrono::milliseconds>(
+            now - lastUpdate).count() > 1000) {
+            cpuHistory.AddValue(info.cpuUsage / 100.0f);
+            memHistory.AddValue(info.memoryUsage / 100.0f);
+            lastUpdate = now;
+        }
+    }
+};
+
+static PerformanceData g_PerformanceData;
+
+// 在ShowExampleAppMenu函数中更新系统信息
+void UpdateSystemInfo() {
+    auto now = std::chrono::steady_clock::now();
+    if (std::chrono::duration_cast<std::chrono::milliseconds>(now - g_LastUpdateTime).count() > 1000) {
+        g_SystemInfo = g_SystemMonitor.GetSystemInfo();
+        g_ProcessList = g_SystemMonitor.GetProcessList();
+        g_LastUpdateTime = now;
+    }
+}
+
+// 在文件中添加主题函数
+void ApplyBlueTheme()
+{
+    ImGui::StyleColorsDark();
+    ImVec4* colors = ImGui::GetStyle().Colors;
+    colors[ImGuiCol_Text]                   = ImVec4(1.00f, 1.00f, 1.00f, 1.00f);
+    colors[ImGuiCol_TextDisabled]           = ImVec4(0.50f, 0.50f, 0.50f, 1.00f);
+    colors[ImGuiCol_WindowBg]               = ImVec4(0.06f, 0.06f, 0.15f, 0.94f);
+    colors[ImGuiCol_ChildBg]                = ImVec4(0.08f, 0.08f, 0.20f, 0.94f);
+    colors[ImGuiCol_PopupBg]                = ImVec4(0.08f, 0.08f, 0.20f, 0.94f);
+    colors[ImGuiCol_Border]                 = ImVec4(0.43f, 0.43f, 0.50f, 0.50f);
+    colors[ImGuiCol_BorderShadow]           = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
+    colors[ImGuiCol_FrameBg]                = ImVec4(0.12f, 0.12f, 0.30f, 0.54f);
+    colors[ImGuiCol_FrameBgHovered]         = ImVec4(0.15f, 0.15f, 0.40f, 0.40f);
+    colors[ImGuiCol_FrameBgActive]          = ImVec4(0.18f, 0.18f, 0.50f, 0.67f);
+    colors[ImGuiCol_TitleBg]                = ImVec4(0.04f, 0.04f, 0.12f, 1.00f);
+    colors[ImGuiCol_TitleBgActive]          = ImVec4(0.08f, 0.08f, 0.20f, 1.00f);
+    colors[ImGuiCol_TitleBgCollapsed]       = ImVec4(0.00f, 0.00f, 0.00f, 0.51f);
+    colors[ImGuiCol_MenuBarBg]              = ImVec4(0.14f, 0.14f, 0.35f, 1.00f);
+    colors[ImGuiCol_ScrollbarBg]            = ImVec4(0.02f, 0.02f, 0.02f, 0.53f);
+    colors[ImGuiCol_ScrollbarGrab]          = ImVec4(0.31f, 0.31f, 0.78f, 1.00f);
+    colors[ImGuiCol_ScrollbarGrabHovered]   = ImVec4(0.41f, 0.41f, 0.88f, 1.00f);
+    colors[ImGuiCol_ScrollbarGrabActive]    = ImVec4(0.51f, 0.51f, 0.98f, 1.00f);
+    colors[ImGuiCol_CheckMark]              = ImVec4(0.26f, 0.59f, 0.98f, 1.00f);
+    colors[ImGuiCol_SliderGrab]             = ImVec4(0.24f, 0.52f, 0.88f, 1.00f);
+    colors[ImGuiCol_SliderGrabActive]       = ImVec4(0.26f, 0.59f, 0.98f, 1.00f);
+    colors[ImGuiCol_Button]                 = ImVec4(0.26f, 0.59f, 0.98f, 0.40f);
+    colors[ImGuiCol_ButtonHovered]          = ImVec4(0.26f, 0.59f, 0.98f, 1.00f);
+    colors[ImGuiCol_ButtonActive]           = ImVec4(0.06f, 0.53f, 0.98f, 1.00f);
+}
+
+void ApplyGreenTheme()
+{
+    ImGui::StyleColorsDark();
+    ImVec4* colors = ImGui::GetStyle().Colors;
+    colors[ImGuiCol_Text]                   = ImVec4(1.00f, 1.00f, 1.00f, 1.00f);
+    colors[ImGuiCol_TextDisabled]           = ImVec4(0.50f, 0.50f, 0.50f, 1.00f);
+    colors[ImGuiCol_WindowBg]               = ImVec4(0.06f, 0.15f, 0.06f, 0.94f);
+    colors[ImGuiCol_ChildBg]                = ImVec4(0.08f, 0.20f, 0.08f, 0.94f);
+    colors[ImGuiCol_PopupBg]                = ImVec4(0.08f, 0.20f, 0.08f, 0.94f);
+    colors[ImGuiCol_Border]                 = ImVec4(0.43f, 0.50f, 0.43f, 0.50f);
+    colors[ImGuiCol_BorderShadow]           = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
+    colors[ImGuiCol_FrameBg]                = ImVec4(0.12f, 0.30f, 0.12f, 0.54f);
+    colors[ImGuiCol_FrameBgHovered]         = ImVec4(0.15f, 0.40f, 0.15f, 0.40f);
+    colors[ImGuiCol_FrameBgActive]          = ImVec4(0.18f, 0.50f, 0.18f, 0.67f);
+    colors[ImGuiCol_TitleBg]                = ImVec4(0.04f, 0.12f, 0.04f, 1.00f);
+    colors[ImGuiCol_TitleBgActive]          = ImVec4(0.08f, 0.20f, 0.08f, 1.00f);
+    colors[ImGuiCol_TitleBgCollapsed]       = ImVec4(0.00f, 0.00f, 0.00f, 0.51f);
+    colors[ImGuiCol_MenuBarBg]              = ImVec4(0.14f, 0.35f, 0.14f, 1.00f);
+    colors[ImGuiCol_ScrollbarBg]            = ImVec4(0.02f, 0.02f, 0.02f, 0.53f);
+    colors[ImGuiCol_ScrollbarGrab]          = ImVec4(0.31f, 0.78f, 0.31f, 1.00f);
+    colors[ImGuiCol_ScrollbarGrabHovered]   = ImVec4(0.41f, 0.88f, 0.41f, 1.00f);
+    colors[ImGuiCol_ScrollbarGrabActive]    = ImVec4(0.51f, 0.98f, 0.51f, 1.00f);
+    colors[ImGuiCol_CheckMark]              = ImVec4(0.26f, 0.98f, 0.26f, 1.00f);
+    colors[ImGuiCol_SliderGrab]             = ImVec4(0.24f, 0.88f, 0.24f, 1.00f);
+    colors[ImGuiCol_SliderGrabActive]       = ImVec4(0.26f, 0.98f, 0.26f, 1.00f);
+    colors[ImGuiCol_Button]                 = ImVec4(0.26f, 0.98f, 0.26f, 0.40f);
+    colors[ImGuiCol_ButtonHovered]          = ImVec4(0.26f, 0.98f, 0.26f, 1.00f);
+    colors[ImGuiCol_ButtonActive]           = ImVec4(0.06f, 0.98f, 0.06f, 1.00f);
+}
+
+// 在文件中添加设置保存函数
+void SaveSettings(bool notifications, bool dark_mode, float refresh_rate, 
+                 int process_limit, bool show_system_processes, 
+                 const char* log_path, int theme)
+{
+    // 这里可以实现设置的保存逻辑，比如写入配置文件
+    // 暂时只打印设置信息
+    printf("Settings saved:\n");
+    printf("Notifications: %d\n", notifications);
+    printf("Dark Mode: %d\n", dark_mode);
+    printf("Refresh Rate: %.1f\n", refresh_rate);
+    printf("Process Limit: %d\n", process_limit);
+    printf("Show System Processes: %d\n", show_system_processes);
+    printf("Log Path: %s\n", log_path);
+    printf("Theme: %d\n", theme);
+}
+
+void DrawPieChart(const char* label, float used, float total, const ImVec2& size) {
+    ImDrawList* draw_list = ImGui::GetWindowDrawList();
+    ImVec2 pos = ImGui::GetCursorScreenPos();
+    float radius = size.x * 0.5f;
+    ImVec2 center = ImVec2(pos.x + radius, pos.y + radius);
+    
+    // 绘制背景圆
+    draw_list->AddCircleFilled(center, radius, IM_COL32(50, 50, 50, 255));
+    
+    // 绘制使用量扇形
+    float angle = (used / total) * 2.0f * (float)M_PI;
+    int segments = 50;
+    draw_list->PathClear();
+    draw_list->PathLineTo(center);
+    for (int i = 0; i <= segments; i++) {
+        float a = (i / (float)segments) * angle;
+        draw_list->PathLineTo(ImVec2(
+            center.x + cosf(a - (float)M_PI/2) * radius,
+            center.y + sinf(a - (float)M_PI/2) * radius
+        ));
+    }
+    draw_list->PathFillConvex(IM_COL32(0, 191, 255, 255));
+    
+    // 显示百分比
+    char overlay[32];
+    sprintf(overlay, "%.1f%%", (used/total) * 100);
+    auto textSize = ImGui::CalcTextSize(overlay);
+    draw_list->AddText(
+        ImVec2(center.x - textSize.x * 0.5f, center.y - textSize.y * 0.5f),
+        IM_COL32(255, 255, 255, 255),
+        overlay
+    );
+    
+    ImGui::Dummy(size);
+}
+
+struct AppSettings {
+    bool notifications = true;
+    bool dark_mode = true;
+    float refresh_rate = 1.0f;
+    int process_limit = 50;
+    bool show_system_processes = true;
+    std::string log_path = "system_monitor.log";
+    int theme = 0;
+    
+    void Save(const char* filename = "settings.ini") {
+        FILE* f = fopen(filename, "w");
+        if (f) {
+            fprintf(f, "notifications=%d\n", notifications);
+            fprintf(f, "dark_mode=%d\n", dark_mode);
+            fprintf(f, "refresh_rate=%.1f\n", refresh_rate);
+            fprintf(f, "process_limit=%d\n", process_limit);
+            fprintf(f, "show_system_processes=%d\n", show_system_processes);
+            fprintf(f, "log_path=%s\n", log_path.c_str());
+            fprintf(f, "theme=%d\n", theme);
+            fclose(f);
+        }
+    }
+    
+    void Load(const char* filename = "settings.ini") {
+        FILE* f = fopen(filename, "r");
+        if (f) {
+            char buffer[256];
+            while (fgets(buffer, sizeof(buffer), f)) {
+                char key[64], value[192];
+                if (sscanf(buffer, "%[^=]=%[^\n]", key, value) == 2) {
+                    if (strcmp(key, "notifications") == 0) notifications = atoi(value);
+                    else if (strcmp(key, "dark_mode") == 0) dark_mode = atoi(value);
+                    else if (strcmp(key, "refresh_rate") == 0) refresh_rate = atof(value);
+                    else if (strcmp(key, "process_limit") == 0) process_limit = atoi(value);
+                    else if (strcmp(key, "show_system_processes") == 0) show_system_processes = atoi(value);
+                    else if (strcmp(key, "log_path") == 0) log_path = value;
+                    else if (strcmp(key, "theme") == 0) theme = atoi(value);
+                }
+            }
+            fclose(f);
+        }
+    }
+};
+
+static AppSettings g_Settings;
+
+// 替换 ShowExampleAppMenu 函数
+void ShowExampleAppMenu()
+{
+    // 保存当前样式状态
+    const auto style_backup = ImGui::GetStyle();
+    
+    // 设置全局样式
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(15, 15));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8, 10));
+    
+    // 设置颜色
+    const int color_count = 4;
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, THEME_COLOR_DARK);
+    ImGui::PushStyleColor(ImGuiCol_Button, THEME_COLOR_LIGHT);
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, THEME_COLOR_MAIN);
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, THEME_COLOR_ACCENT);
+
+    try {
+        // 左侧菜单面板
+        ImGui::SetNextWindowPos(ImVec2(0, 0));
+        ImGui::SetNextWindowSize(ImVec2(250, ImGui::GetIO().DisplaySize.y));
+        
+        if (ImGui::Begin("##MainMenu", nullptr, 
+            ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | 
+            ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus))
+        {
+            // Logo和标题区域
+            {
+                ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[0]);
+                ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 10);
+                ImGui::PushStyleColor(ImGuiCol_Text, THEME_COLOR_MAIN);
+                ImGui::Text("系统监控面板");
+                ImGui::PopStyleColor();
+                ImGui::PopFont();
+                
+                ImGui::Text("v1.0.0");
+                ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 20);
+                ImGui::Separator();
+                ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 20);
+            }
+
+            // 菜单项样式
+            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(10, 12));
+            ImGui::PushStyleColor(ImGuiCol_Header, THEME_COLOR_LIGHT);
+            ImGui::PushStyleColor(ImGuiCol_HeaderHovered, THEME_COLOR_MAIN);
+            ImGui::PushStyleColor(ImGuiCol_HeaderActive, THEME_COLOR_ACCENT);
+
+            // 菜单项
+            for (int i = 0; i < 4; i++) {
+                ImGui::PushID(i);
+                bool selected = current_page == static_cast<MenuPage>(i);
+                
+                if (selected) {
+                    ImGui::PushStyleColor(ImGuiCol_Text, THEME_COLOR_MAIN);
+                }
+                
+                if (ImGui::Selectable(MENU_ITEMS[i], selected, 0, ImVec2(0, 45))) {
+                    current_page = static_cast<MenuPage>(i);
+                }
+                
+                // 在选项左侧绘制图标
+                if (selected) {
+                    ImGui::SameLine(5);
+                    ImGui::Text(MENU_ICONS[i]);
+                    ImGui::PopStyleColor();
+                    
+                    // 绘制选中指示器
+                    auto pos = ImGui::GetItemRectMin();
+                    auto size = ImGui::GetItemRectSize();
+                    ImGui::GetWindowDrawList()->AddRectFilled(
+                        ImVec2(pos.x - 5, pos.y), 
+                        ImVec2(pos.x - 2, pos.y + size.y),
+                        ImGui::ColorConvertFloat4ToU32(THEME_COLOR_MAIN)
+                    );
+                }
+                
+                ImGui::PopID();
+            }
+
+            // 底部信息
+            ImGui::SetCursorPos(ImVec2(15, ImGui::GetIO().DisplaySize.y - 70));
+            ImGui::Text("系统状态: 正常运行");
+            ImGui::Text("更新时间: %s", "2024-01-01");
+
+            ImGui::PopStyleVar(); // FramePadding
+            ImGui::PopStyleColor(3); // Header colors
+        }
+        ImGui::End();
+
+        // 主内容区域
+        ImGui::SetNextWindowPos(ImVec2(250, 0));
+        ImGui::SetNextWindowSize(ImVec2(ImGui::GetIO().DisplaySize.x - 250, ImGui::GetIO().DisplaySize.y));
+        
+        if (ImGui::Begin("##MainContent", nullptr, 
+            ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | 
+            ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus))
+        {
+            // 内容区域的标题栏
+            ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[0]);
+            ImGui::Text("%s %s", MENU_ICONS[static_cast<int>(current_page)], 
+                MENU_ITEMS[static_cast<int>(current_page)]);
+            ImGui::PopFont();
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            // 根据当前选择的页面显示不同内容
+            switch (current_page)
+            {
+                case MenuPage::Dashboard:
+                {
+                    UpdateSystemInfo();
+                    
+                    ImGui::Text("系统概览");
+                    ImGui::Separator();
+                    ImGui::Spacing();
+
+                    // CPU和内存使用率
+                    {
+                        ImGui::BeginChild("Performance", ImVec2(0, 150), true);
+                        float cpuUsage = g_SystemInfo.cpuUsage / 100.0f;
+                        float memUsage = g_SystemInfo.memoryUsage / 100.0f;
+                        
+                        // CPU使用率圆形进度条
+                        ImDrawList* draw_list = ImGui::GetWindowDrawList();
+                        ImVec2 center = ImGui::GetCursorScreenPos();
+                        center.x += 60;
+                        center.y += 60;
+                        
+                        draw_list->AddCircle(center, 50, IM_COL32(100, 100, 100, 255), 32, 4);
+                        draw_list->AddCircleFilled(center, 48, IM_COL32(30, 30, 30, 255), 32);
+                        
+                        // 绘制进度弧
+                        int segments = 32;
+                        float angle = cpuUsage * 2 * 3.14159f;
+                        for (int i = 0; i < segments; i++) {
+                            float a1 = (float)i / segments * angle;
+                            float a2 = (float)(i + 1) / segments * angle;
+                            draw_list->AddLine(
+                                ImVec2(center.x + cosf(a1) * 48, center.y + sinf(a1) * 48),
+                                ImVec2(center.x + cosf(a2) * 48, center.y + sinf(a2) * 48),
+                                IM_COL32(0, 191, 255, 255), 4
+                            );
+                        }
+                        
+                        // CPU使用率文本
+                        char cpuText[32];
+                        sprintf(cpuText, "%.1f%%", g_SystemInfo.cpuUsage);
+                        auto textSize = ImGui::CalcTextSize(cpuText);
+                        draw_list->AddText(
+                            ImVec2(center.x - textSize.x/2, center.y - textSize.y/2),
+                            IM_COL32(255, 255, 255, 255), cpuText
+                        );
+                        
+                        // 内存使用率条
+                        ImGui::SameLine(150);
+                        ImGui::BeginGroup();
+                        ImGui::Text("内存使用");
+                        ImGui::ProgressBar(memUsage, ImVec2(200, 20));
+                        ImGui::Text("%.1f%%", g_SystemInfo.memoryUsage);
+                        ImGui::EndGroup();
+                        
+                        ImGui::EndChild();
+                    }
+
+                    // 系统信息卡片
+                    ImGui::Columns(3, "SystemInfo", false);
+                    
+                    // 运行时间卡片
+                    ImGui::BeginChild("Uptime", ImVec2(0, 100), true);
+                    ImGui::Text("系统运行时间");
+                    float hours = g_SystemInfo.systemUptime;
+                    int days = (int)(hours / 24);
+                    hours = fmod(hours, 24);
+                    ImGui::Text("%d 天 %.1f 小时", days, hours);
+                    ImGui::EndChild();
+                    ImGui::NextColumn();
+
+                    // CPU温度卡片
+                    ImGui::BeginChild("Temperature", ImVec2(0, 100), true);
+                    ImGui::Text("CPU温度");
+                    ImGui::Text("%.1f °C", g_SystemInfo.cpuTemperature);
+                    if (g_SystemInfo.cpuTemperature > 80)
+                        ImGui::TextColored(ImVec4(1, 0, 0, 1), "警告：温度过高！");
+                    ImGui::EndChild();
+                    ImGui::NextColumn();
+
+                    // 磁盘使用卡片
+                    ImGui::BeginChild("DiskUsage", ImVec2(0, 100), true);
+                    ImGui::Text("磁盘使用率");
+                    ImGui::Text("%.1f%%", g_SystemInfo.diskUsage);
+                    ImGui::ProgressBar(g_SystemInfo.diskUsage / 100.0f);
+                    ImGui::EndChild();
+                    
+                    ImGui::Columns(1);
+                    break;
+                }
+                case MenuPage::DataVisualization:
+                {
+                    UpdateSystemInfo();
+                    static ScrollingBuffer cpuData, memData;
+                    
+                    // 更新数据
+                    cpuData.AddValue(g_SystemInfo.cpuUsage / 100.0f);
+                    memData.AddValue(g_SystemInfo.memoryUsage / 100.0f);
+
+                    // CPU和内存使用率历史图表
+                    ImGui::BeginChild("性能历史", ImVec2(0, 400), true);
+                    
+                    ImGui::Text("CPU使用率历史");
+                    cpuData.Draw("##CPU", 0.0f, 1.0f);
+                    
+                    ImGui::Spacing();
+                    ImGui::Text("内存使用率历史");
+                    memData.Draw("##Memory", 0.0f, 1.0f);
+                    
+                    ImGui::EndChild();
+
+                    // 磁盘使用情况
+                    ImGui::Text("磁盘使用情况");
+                    auto diskInfos = g_SystemMonitor.GetDiskInfo();
+                    
+                    ImGui::Columns(3, "DiskInfo", false);
+                    for (const auto& disk : diskInfos) {
+                        ImGui::BeginGroup();
+                        ImGui::Text("%s", disk.driveLetter.c_str());
+                        DrawPieChart(disk.driveLetter.c_str(), 
+                                    disk.usedSpace,
+                                    disk.totalSpace,
+                                    ImVec2(150, 150));
+                        
+                        ImGui::Text("总容量: %.1f GB", disk.totalSpace);
+                        ImGui::Text("已用: %.1f GB", disk.usedSpace);
+                        ImGui::Text("可用: %.1f GB", disk.freeSpace);
+                        ImGui::Text("读取速度: %.1f MB/s", disk.readSpeed);
+                        ImGui::Text("写入速度: %.1f MB/s", disk.writeSpeed);
+                        ImGui::EndGroup();
+                        
+                        ImGui::NextColumn();
+                    }
+                    ImGui::Columns(1);
+                    break;
+                }
+                case MenuPage::SystemMonitor:
+                {
+                    UpdateSystemInfo();
+                    
+                    // 进程列表
+                    static ImGuiTableFlags flags = 
+                        ImGuiTableFlags_Resizable | ImGuiTableFlags_Reorderable | 
+                        ImGuiTableFlags_Hideable | ImGuiTableFlags_Sortable | 
+                        ImGuiTableFlags_SortMulti | ImGuiTableFlags_RowBg | 
+                        ImGuiTableFlags_BordersOuter | ImGuiTableFlags_BordersV |
+                        ImGuiTableFlags_ScrollY;
+                        
+                    if (ImGui::BeginTable("进程列表", 5, flags)) {
+                        ImGui::TableSetupScrollFreeze(0, 1); // 顶部行固定
+                        ImGui::TableSetupColumn("进程名", ImGuiTableColumnFlags_DefaultSort);
+                        ImGui::TableSetupColumn("PID");
+                        ImGui::TableSetupColumn("CPU使用率 %");
+                        ImGui::TableSetupColumn("内存使用");
+                        ImGui::TableSetupColumn("状态");
+                        ImGui::TableHeadersRow();
+
+                        // 进程列表排序
+                        if (ImGuiTableSortSpecs* sorts_specs = ImGui::TableGetSortSpecs()) {
+                            if (sorts_specs->SpecsDirty) {
+                                std::sort(g_ProcessList.begin(), g_ProcessList.end(),
+                                    [sorts_specs](const SystemMonitor::ProcessInfo& a, const SystemMonitor::ProcessInfo& b) {
+                                        for (int n = 0; n < sorts_specs->SpecsCount; n++) {
+                                            const ImGuiTableColumnSortSpecs* sort_spec = &sorts_specs->Specs[n];
+                                            int delta = 0;
+                                            switch (sort_spec->ColumnIndex) {
+                                                case 0: delta = a.name.compare(b.name); break;
+                                                case 1: delta = a.pid - b.pid; break;
+                                                case 2: delta = a.cpuUsage - b.cpuUsage; break;
+                                                case 3: delta = a.memoryUsage - b.memoryUsage; break;
+                                                case 4: delta = a.status.compare(b.status); break;
+                                            }
+                                            if (delta > 0)
+                                                return sort_spec->SortDirection == ImGuiSortDirection_Ascending;
+                                            if (delta < 0)
+                                                return sort_spec->SortDirection == ImGuiSortDirection_Descending;
+                                        }
+                                        return false;
+                                    });
+                                sorts_specs->SpecsDirty = false;
+                            }
+                        }
+
+                        // 显示进程信息
+                        for (const auto& process : g_ProcessList) {
+                            ImGui::TableNextRow();
+                            ImGui::TableNextColumn();
+                            ImGui::Text("%s", process.name.c_str());
+                            ImGui::TableNextColumn();
+                            ImGui::Text("%u", process.pid);
+                            ImGui::TableNextColumn();
+                            ImGui::Text("%.1f", process.cpuUsage);
+                            ImGui::TableNextColumn();
+                            ImGui::Text("%zu MB", process.memoryUsage);
+                            ImGui::TableNextColumn();
+                            ImGui::Text("%s", process.status.c_str());
+                        }
+                        ImGui::EndTable();
+                    }
+
+                    // 网络监控
+                    auto networkInfos = g_SystemMonitor.GetNetworkInfo();
+                    if (ImGui::BeginTable("网络监控", 4, ImGuiTableFlags_Borders)) {
+                        ImGui::TableSetupColumn("适配器");
+                        ImGui::TableSetupColumn("上传速度");
+                        ImGui::TableSetupColumn("下载速度");
+                        ImGui::TableSetupColumn("总流量");
+                        ImGui::TableHeadersRow();
+
+                        for (const auto& net : networkInfos) {
+                            ImGui::TableNextRow();
+                            ImGui::TableNextColumn();
+                            ImGui::Text("%s", net.adapterName.c_str());
+                            ImGui::TableNextColumn();
+                            ImGui::Text("%s/s", g_SystemMonitor.FormatBytes(net.uploadSpeed).c_str());
+                            ImGui::TableNextColumn();
+                            ImGui::Text("%s/s", g_SystemMonitor.FormatBytes(net.downloadSpeed).c_str());
+                            ImGui::TableNextColumn();
+                            ImGui::Text("↑%s ↓%s", 
+                                g_SystemMonitor.FormatBytes(net.bytesSent).c_str(),
+                                g_SystemMonitor.FormatBytes(net.bytesReceived).c_str());
+                        }
+                        ImGui::EndTable();
+                    }
+                    break;
+                }
+                case MenuPage::Settings:
+                {
+                    static bool enable_notifications = true;
+                    static bool dark_mode = true;
+                    static float refresh_rate = 1.0f;
+                    static int process_limit = 50;
+                    static bool show_system_processes = true;
+                    static char log_path[256] = "system_monitor.log";
+                    static int selected_theme = 0;
+                    const char* themes[] = { "深色主题", "浅色主题", "蓝色主题", "绿色主题" };
+
+                    ImGui::Text("基本设置");
+                    ImGui::Separator();
+                    ImGui::Spacing();
+
+                    if (ImGui::Checkbox("启用通知", &enable_notifications)) {
+                        // 处理通知设置变更
+                    }
+
+                    if (ImGui::Checkbox("深色模式", &dark_mode)) {
+                        // 切换主题
+                        if (dark_mode)
+                            ImGui::StyleColorsDark();
+                        else
+                            ImGui::StyleColorsLight();
+                    }
+
+                    ImGui::SliderFloat("刷新频率 (秒)", &refresh_rate, 0.1f, 5.0f, "%.1f");
+                    ImGui::SliderInt("进程显示数量限制", &process_limit, 10, 200);
+                    ImGui::Checkbox("显示系统进程", &show_system_processes);
+
+                    ImGui::Spacing();
+                    ImGui::Text("主题设置");
+                    ImGui::Separator();
+                    ImGui::Spacing();
+
+                    if (ImGui::Combo("选择主题", &selected_theme, themes, IM_ARRAYSIZE(themes))) {
+                        // 应用选择的主题
+                        switch (selected_theme) {
+                            case 0: ImGui::StyleColorsDark(); break;
+                            case 1: ImGui::StyleColorsLight(); break;
+                            case 2: ApplyBlueTheme(); break;
+                            case 3: ApplyGreenTheme(); break;
+                        }
+                    }
+
+                    ImGui::Spacing();
+                    ImGui::Text("日志设置");
+                    ImGui::Separator();
+                    ImGui::Spacing();
+
+                    ImGui::InputText("日志文件路径", log_path, sizeof(log_path));
+
+                    ImGui::Spacing();
+                    ImGui::Separator();
+                    ImGui::Spacing();
+
+                    if (ImGui::Button("保存设置", ImVec2(120, 30))) {
+                        // 保存所有设置
+                        SaveSettings(enable_notifications, dark_mode, refresh_rate, 
+                                    process_limit, show_system_processes, log_path, selected_theme);
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::Button("重置设置", ImVec2(120, 30))) {
+                        // 重置为默认设置
+                        enable_notifications = true;
+                        dark_mode = true;
+                        refresh_rate = 1.0f;
+                        process_limit = 50;
+                        show_system_processes = true;
+                        strcpy(log_path, "system_monitor.log");
+                        selected_theme = 0;
+                        ImGui::StyleColorsDark();
+                    }
+
+                    // 显示关于信息
+                    ImGui::Spacing();
+                    ImGui::Separator();
+                    ImGui::Text("关于");
+                    ImGui::Text("系统监控工具 v1.0.0");
+                    ImGui::Text("作者: Your Name");
+                    ImGui::Text("构建时间: %s %s", __DATE__, __TIME__);
+                    break;
+                }
+            }
+        }
+        ImGui::End();
+    }
+    catch (...) {
+        // 确保样式被正确恢复
+        ImGui::PopStyleColor(color_count);
+        ImGui::PopStyleVar(2);
+        ImGui::GetStyle() = style_backup;
+        throw;
+    }
+
+    // 恢复样式
+    ImGui::PopStyleColor(color_count);
+    ImGui::PopStyleVar(2);
+}
 
 // Main code
 int imgui_example()
@@ -52,12 +743,52 @@ int imgui_example()
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO(); (void)io;
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      
+
+    // 加载中文字体（确保路径存在，否则使用默认字体）
+    ImFont* font = nullptr;
+    try {
+        font = io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\msyh.ttc", 18.0f, nullptr, 
+            io.Fonts->GetGlyphRangesChineseFull());
+    } catch (...) {
+        font = io.Fonts->AddFontDefault();
+    }
+    if (font == nullptr) {
+        font = io.Fonts->AddFontDefault();
+    }
 
     // Setup Dear ImGui style
     ImGui::StyleColorsDark();
-    //ImGui::StyleColorsLight();
+    auto& style = ImGui::GetStyle();
+    
+    // 基础样式设置
+    style.FrameRounding = 6.0f;
+    style.WindowRounding = 8.0f;
+    style.PopupRounding = 6.0f;
+    style.ScrollbarRounding = 6.0f;
+    style.GrabRounding = 6.0f;
+    style.TabRounding = 6.0f;
+    style.WindowBorderSize = 0.0f;
+    style.FrameBorderSize = 0.0f;
+    style.WindowPadding = ImVec2(15, 15);
+    style.ItemSpacing = ImVec2(8, 8);
+    style.ScrollbarSize = 12.0f;
+
+    // 颜色设置
+    auto& colors = style.Colors;
+    colors[ImGuiCol_WindowBg] = THEME_COLOR_DARK;
+    colors[ImGuiCol_FrameBg] = THEME_COLOR_LIGHT;
+    colors[ImGuiCol_FrameBgHovered] = ImVec4(0.25f, 0.27f, 0.32f, 1.00f);
+    colors[ImGuiCol_FrameBgActive] = ImVec4(0.28f, 0.30f, 0.35f, 1.00f);
+    colors[ImGuiCol_TitleBgActive] = THEME_COLOR_DARK;
+    colors[ImGuiCol_CheckMark] = THEME_COLOR_MAIN;
+    colors[ImGuiCol_SliderGrab] = THEME_COLOR_MAIN;
+    colors[ImGuiCol_SliderGrabActive] = THEME_COLOR_ACCENT;
+    colors[ImGuiCol_ScrollbarBg] = THEME_COLOR_DARK;
+    colors[ImGuiCol_ScrollbarGrab] = THEME_COLOR_LIGHT;
+    colors[ImGuiCol_ScrollbarGrabHovered] = THEME_COLOR_MAIN;
+    colors[ImGuiCol_ScrollbarGrabActive] = THEME_COLOR_ACCENT;
 
     // Setup Platform/Renderer backends
     ImGui_ImplWin32_Init(hwnd);
@@ -80,8 +811,6 @@ int imgui_example()
     //IM_ASSERT(font != nullptr);
 
     // Our state
-    bool show_demo_window = true;
-    bool show_another_window = false;
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 
     // Main loop
@@ -123,42 +852,7 @@ int imgui_example()
         ImGui_ImplWin32_NewFrame();
         ImGui::NewFrame();
 
-        // 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
-        if (show_demo_window)
-            ImGui::ShowDemoWindow(&show_demo_window);
-
-        // 2. Show a simple window that we create ourselves. We use a Begin/End pair to create a named window.
-        {
-            static float f = 0.0f;
-            static int counter = 0;
-
-            ImGui::Begin("Hello, world!");                          // Create a window called "Hello, world!" and append into it.
-
-            ImGui::Text("This is some useful text.");               // Display some text (you can use a format strings too)
-            ImGui::Checkbox("Demo Window", &show_demo_window);      // Edit bools storing our window open/close state
-            ImGui::Checkbox("Another Window", &show_another_window);
-
-            ImGui::SliderFloat("float", &f, 0.0f, 1.0f);            // Edit 1 float using a slider from 0.0f to 1.0f
-            ImGui::ColorEdit3("clear color", (float*)&clear_color); // Edit 3 floats representing a color
-
-            if (ImGui::Button("Button"))                            // Buttons return true when clicked (most widgets return true when edited/activated)
-                counter++;
-            ImGui::SameLine();
-            ImGui::Text("counter = %d", counter);
-
-            ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
-            ImGui::End();
-        }
-
-        // 3. Show another simple window.
-        if (show_another_window)
-        {
-            ImGui::Begin("Another Window", &show_another_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
-            ImGui::Text("Hello from another window!");
-            if (ImGui::Button("Close Me"))
-                show_another_window = false;
-            ImGui::End();
-        }
+        ShowExampleAppMenu();
 
         // Rendering
         ImGui::Render();
@@ -272,3 +966,5 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
     }
     return ::DefWindowProcW(hWnd, msg, wParam, lParam);
 }
+
+
