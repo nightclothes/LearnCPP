@@ -40,7 +40,7 @@ int imgui_example()
     //ImGui_ImplWin32_EnableDpiAwareness();
     WNDCLASSEXW wc = { sizeof(wc), CS_CLASSDC, WndProc, 0L, 0L, GetModuleHandle(nullptr), nullptr, nullptr, nullptr, nullptr, L"ImGui Example", nullptr };
     ::RegisterClassExW(&wc);
-    HWND hwnd = ::CreateWindowW(wc.lpszClassName, L"Dear ImGui DirectX11 Example", WS_OVERLAPPEDWINDOW, 100, 100, 1000, 1000, nullptr, nullptr, wc.hInstance, nullptr);
+    HWND hwnd = ::CreateWindowW(wc.lpszClassName, L"Dear ImGui DirectX11 Example", WS_OVERLAPPEDWINDOW ,100, 100, 100, 100, nullptr, nullptr, wc.hInstance, nullptr);
 
     // Initialize Direct3D
     if (!CreateDeviceD3D(hwnd))
@@ -127,14 +127,24 @@ int imgui_example()
         // Handle window being minimized or screen locked
         if (g_SwapChainOccluded && g_pSwapChain->Present(0, DXGI_PRESENT_TEST) == DXGI_STATUS_OCCLUDED)
         {
+            
             ::Sleep(10);
             continue;
         }
         g_SwapChainOccluded = false;
 
+        
+        // 通过hwnd获取窗口大小
+        // RECT rc;
+        // ::GetClientRect(hwnd, &rc);
+        // std::cout<<"窗口大小："<<rc.right - rc.left<<","<<rc.bottom - rc.top<<std::endl;
+        // std::cout<<"winpro中的窗口大小："<<g_ResizeWidth<<","<<g_ResizeHeight<<std::endl;
+
+
         // Handle window resize (we don't resize directly in the WM_SIZE handler)
         if (g_ResizeWidth != 0 && g_ResizeHeight != 0)
         {
+            std::cout<<"窗口大小："<<g_ResizeWidth<<","<<g_ResizeHeight<<std::endl;
             CleanupRenderTarget();
             g_pSwapChain->ResizeBuffers(0, g_ResizeWidth, g_ResizeHeight, DXGI_FORMAT_UNKNOWN, 0);
             g_ResizeWidth = g_ResizeHeight = 0;
@@ -201,6 +211,10 @@ int imgui_example()
         HRESULT hr = g_pSwapChain->Present(1, 0);   // Present with vsync
         //HRESULT hr = g_pSwapChain->Present(0, 0); // Present without vsync
         g_SwapChainOccluded = (hr == DXGI_STATUS_OCCLUDED);
+        if (g_SwapChainOccluded)
+        {
+            std::cout << "窗口被遮挡" << std::endl;
+        };
     }
 
     // Cleanup
